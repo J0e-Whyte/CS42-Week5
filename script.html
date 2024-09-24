@@ -1,0 +1,297 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8" />
+    <title>Making your first Phaser 3 Game - Part 10</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var config = {
+    type: Phaser.AUTO,
+    width: 900,
+    height: 900,
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 1500 },
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+var player;
+var stars;
+var bombs;
+var platforms;
+var cursors;
+var score = 0;
+var gameOver = false;
+var scoreText;
+var dashCD;
+var startStand = 1;
+
+var game = new Phaser.Game(config);
+
+function preload ()
+{
+    this.load.image('background', 'assets/background.png');
+    this.load.image('ground', 'assets/ground.png');
+    this.load.spritesheet('drop', 'assets/drop.png', { frameWidth: 21, frameHeight: 26 });
+    this.load.image('fire', 'assets/fire.png');
+    this.load.spritesheet('character', 'assets/stick.png', { frameWidth: 40, frameHeight: 56 });
+}
+ 
+function create ()
+{
+    //  A simple background for our game
+    this.add.image(400, 450, 'background');
+
+    //  The platforms group contains the ground and the 2 ledges we can jump on
+    platforms = this.physics.add.staticGroup();
+
+    //  Here we create the ground.
+    //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
+    platforms.create(400, 868, 'ground').setScale(2).refreshBody();
+
+    //  Now let's create some ledges
+    platforms.create(600, 700, 'ground');
+    platforms.create(50, 550, 'ground');
+    platforms.create(750, 520, 'ground');
+    platforms.create(450, 350, 'ground');
+
+    // The player and its settings
+    player = this.physics.add.sprite(100, 700, 'character');
+
+   
+
+    //  Player physics properties. Give the little guy a slight bounce.
+    player.setBounce(0.1);
+    player.setCollideWorldBounds(true);
+
+     
+
+    //  Our player animations, turning, walking left and walking right.
+    this.anims.create({
+        key: 'left',
+        frames: this.anims.generateFrameNumbers('character', { start: 11, end: 16 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'turn',
+        frames: this.anims.generateFrameNumbers('character', { start: 0, end: 3 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'right',
+        frames: this.anims.generateFrameNumbers('character', { start: 4, end: 9 }), 
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'dashL',
+        frames: [ { key: 'character', frame: 17 } ]
+    })
+
+    this.anims.create({
+        key: 'dashR',
+        frames: [ { key: 'character', frame: 10 } ]
+    })
+
+    //  Input Events
+    cursors = this.input.keyboard.createCursorKeys();
+
+    //  Some stars to collect, 12 in total, evenly spaced 70 pixels apart along the x axis
+    this.anims.create({
+        key: 'go',
+        frames: this.anims.generateFrameNumbers('drop', { start: 0, end: 3 }),
+        frameRate: 5,
+        repeat: -1
+    });
+
+    stars = this.physics.add.group({
+        key: 'drop',
+        repeat: 11,
+        setXY: { x: 25, y: 140, stepX: 76 }
+    });
+ 
+    stars.children.iterate(function (child) {
+        child.setBounceY(0.9);
+        child.setBounceX(1.1);
+        child.setVelocityX(Phaser.Math.FloatBetween(-1.0, 1.0)*100);
+        child.setCollideWorldBounds(true);
+        child.body.setAllowGravity(false);
+        child.anims.play('go', true);
+    });
+
+
+    bombs = this.physics.add.group();
+
+    //  The score
+    scoreText = this.add.text(16, 16, 'score: 0', { fontSize: '32px', fill: '#000' });
+
+    //  Collide the player and the stars with the platforms
+    this.physics.add.collider(player, platforms);
+    this.physics.add.collider(stars, platforms);
+    this.physics.add.collider(bombs, bombs);
+
+    //  Checks to see if the player overlaps with any of the stars, if he does call the collectStar function
+    this.physics.add.overlap(player, stars, collectStar, null, this);
+
+    this.physics.add.collider(player, bombs, hitBomb, null, this);
+}
+
+function update ()
+{
+
+
+    if (gameOver)
+    {
+        return;
+    }
+    
+ 
+    if (cursors.shift.isDown && cursors.left.isDown && (dashCD <= 50))
+    {
+        player.setVelocityX(-560);
+
+        player.setVelocityY(0);
+
+        player.body.setAllowGravity(false)
+ 
+        player.anims.play('dashL', true);
+
+        dashCD += 1; 
+
+        startStand = 1;
+
+    }
+    else if (cursors.shift.isDown && cursors.right.isDown && (dashCD <= 50))
+    {
+        player.setVelocityX(560);
+
+        player.setVelocityY(0);
+
+        player.body.setAllowGravity(false)
+
+        player.anims.play('dashR', true);
+
+        dashCD += 1;
+
+        startStand = 1;
+
+    }
+    else if (cursors.left.isDown)
+    {
+        player.setVelocityX(-260);
+
+        player.anims.play('left', true);
+        
+        player.body.setAllowGravity(true)
+
+        startStand = 1;
+       
+    }
+    else if (cursors.right.isDown)
+    {
+        player.setVelocityX(260);
+
+        player.anims.play('right', true);
+
+        player.body.setAllowGravity(true)
+
+        startStand = 1;
+
+    }
+    else
+    {
+        player.setVelocityX(0);
+
+        player.body.setAllowGravity(true)
+
+        if (startStand == 1) {
+
+            player.anims.play('turn', true);
+        
+            startStand = 0;
+
+        }
+
+    }
+
+    if (cursors.up.isDown && player.body.touching.down)
+    {
+        player.setVelocityY(-760);
+    }
+
+    if (player.body.touching.down)
+    {
+        dashCD = 0;
+    }
+
+    
+
+}
+
+function collectStar (player, drop)
+{
+    drop.disableBody(true, true);
+
+    //  Add and update the score
+    dashCD = 0;
+
+    if (stars.countActive(true) === 0)
+    {
+        //  A new batch of stars to collect
+        stars.children.iterate(function (child) {
+ 
+            child.enableBody(true, child.x, 0, true, true);
+            child.setCollideWorldBounds(true);
+            child.setVelocityX(Phaser.Math.FloatBetween(-5.0, 5.0)*3);
+
+        });
+
+        var x = (player.x < 400) ? Phaser.Math.Between(400, 800) : Phaser.Math.Between(0, 400);
+
+        var fire = bombs.create(x, 16, 'fire');
+        fire.setBounce(1);
+        fire.setCollideWorldBounds(true);
+        fire.setVelocity(Phaser.Math.Between(-200, 200), 20);
+        fire.allowGravity = false;
+
+    }
+}
+
+function hitBomb (player, fire)
+{
+    this.physics.pause();
+
+    player.setTint(0xff0000);
+
+    player.anims.play('turn');
+
+    gameOver = true;
+}
+
+
+</script>
+
+</body>
+</html>
